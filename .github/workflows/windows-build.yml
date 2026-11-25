@@ -21,35 +21,36 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
-      - name: Verify ATL headers
+      - name: Check Visual Studio and ATL
         shell: powershell
         run: |
           $vsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath
 
-          Write-Host "Visual Studio: $vsPath"
+          Write-Host "VS Path: $vsPath"
 
-          $atlPath = Join-Path $vsPath "VC\Tools\MSVC"
+          if (-not $vsPath) {
+            throw "Visual Studio not found."
+          }
 
-          $headers = @("atlbase.h", "atlcomcli.h", "atlstr.h")
-          $missing = @()
+          $atlDir = Join-Path $vsPath "VC\Tools\MSVC"
+
+          $headers = @(
+            "atlbase.h",
+            "atlcomcli.h",
+            "atlstr.h"
+          )
 
           foreach ($header in $headers) {
-            $found = Get-ChildItem -Path $atlPath -Filter $header -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+            $result = Get-ChildItem -Path $atlDir -Filter $header -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
 
-            if ($found) {
-              Write-Host "FOUND: $header -> $($found.FullName)"
-            }
-            else {
+            if (-not $result) {
               Write-Host "MISSING: $header"
-              $missing += $header
+              throw "ATL header missing: $header"
             }
-          }
 
-          if ($missing.Count -gt 0) {
-            throw "Missing ATL headers: $($missing -join ', ')"
+            Write-Host "FOUND: $header"
+            Write-Host $result.FullName
           }
-
-          Write-Host "All required ATL headers are available."
 
       - name: Configure OBS
         run: cmake --preset windows-x64
@@ -57,7 +58,7 @@ jobs:
       - name: Build OBS
         run: cmake --build --preset windows-x64 --config Release --parallel
 
-      - name: Upload build files
+      - name: Upload OBS build
         uses: actions/upload-artifact@v4
         with:
           name: Future-Live-Studio-Windows-Build
