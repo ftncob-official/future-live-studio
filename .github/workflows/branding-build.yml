@@ -1,0 +1,42 @@
+
+name: Future Live Studio Branding Build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2025
+
+    steps:
+      - name: Checkout OBS source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Visual Studio
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Install CMake
+        uses: lukka/get-cmake@latest
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake --preset windows-x64 `
+            -DOBS_VERSION_OVERRIDE:STRING=1.0.0
+
+      - name: Build
+        shell: pwsh
+        run: |
+          cmake --build build --config Release --parallel
+
+      - name: Upload Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Future-Live-Studio-Build
+          path: build/
+          if-no-files-found: ignore
