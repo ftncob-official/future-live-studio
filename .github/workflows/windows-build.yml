@@ -12,11 +12,12 @@ jobs:
     runs-on: windows-2025-vs2026
 
     steps:
-      - name: Checkout OBS Studio
+           - name: Checkout OBS Studio
         uses: actions/checkout@v4
         with:
           repository: obsproject/obs-studio
           ref: master
+          fetch-depth: 0
           submodules: recursive
 
       - name: Patch OBS for ATL-free build
