@@ -21,7 +21,7 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
-      - name: Install missing ATL components
+      - name: Install ATL components
         shell: powershell
         run: |
           $vsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath
@@ -43,9 +43,13 @@ jobs:
             "--nocache"
           )
 
-          Start-Process -FilePath $installer -ArgumentList $arguments -Wait
+          $process = Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru
 
-          Write-Host "ATL installation process completed."
+          if ($process.ExitCode -ne 0) {
+            throw "ATL installation failed with exit code $($process.ExitCode)"
+          }
+
+          Write-Host "ATL installation completed successfully."
 
       - name: Configure OBS
         run: cmake --preset windows-x64
