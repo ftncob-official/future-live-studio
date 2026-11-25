@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-2025-vs2026
+    runs-on: windows-2022
     timeout-minutes: 360
 
     steps:
@@ -20,36 +20,6 @@ jobs:
           ref: master
           fetch-depth: 0
           submodules: recursive
-
-      - name: Install ATL components
-        shell: powershell
-        run: |
-          $vsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath
-
-          Write-Host "Visual Studio Path: $vsPath"
-
-          if (-not $vsPath) {
-            throw "Visual Studio installation was not found."
-          }
-
-          $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
-
-          $arguments = @(
-            "modify"
-            "--installPath", "$vsPath"
-            "--add", "Microsoft.VisualStudio.Component.VC.ATL"
-            "--quiet"
-            "--norestart"
-            "--nocache"
-          )
-
-          $process = Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru
-
-          if ($process.ExitCode -ne 0) {
-            throw "ATL installation failed with exit code $($process.ExitCode)"
-          }
-
-          Write-Host "ATL installation completed successfully."
 
       - name: Configure OBS
         run: cmake --preset windows-x64
