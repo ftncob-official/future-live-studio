@@ -12,9 +12,10 @@ jobs:
     runs-on: windows-2025
 
     steps:
-      - name: Checkout OBS source
+      - name: Checkout OBS Studio Source
         uses: actions/checkout@v4
         with:
+          repository: obsproject/obs-studio
           submodules: recursive
 
       - name: Setup Visual Studio
@@ -23,20 +24,43 @@ jobs:
       - name: Install CMake
         uses: lukka/get-cmake@latest
 
-      - name: Configure
+      - name: Configure OBS
         shell: pwsh
         run: |
-          cmake --preset windows-x64 `
-            -DOBS_VERSION_OVERRIDE:STRING=1.0.0
+          cmake --preset windows-x64 -DOBS_VERSION_OVERRIDE:STRING=1.0.0
 
-      - name: Build
+      - name: Build OBS
         shell: pwsh
         run: |
-          cmake --build build --config Release --parallel
+          cmake --build --preset windows-x64 --config RelWithDebInfo --parallel
 
-      - name: Upload Build
+      - name: Collect Build Files
+        shell: pwsh
+        run: |
+          $paths = @(
+            "build_x64/rundir/RelWithDebInfo/bin/64bit",
+            "build_x64/rundir/Release/bin/64bit"
+          )
+
+          $found = $false
+
+          foreach ($path in $paths) {
+            if (Test-Path $path) {
+              New-Item -ItemType Directory -Force -Path "FutureLiveStudio" | Out-Null
+              Copy-Item "$path/*" "FutureLiveStudio/" -Recurse -Force
+              $found = $true
+              break
+            }
+          }
+
+          if (-not $found) {
+            Write-Error "OBS build output folder not found"
+            exit 1
+          }
+
+      - name: Upload Future Live Studio
         uses: actions/upload-artifact@v4
         with:
-          name: Future-Live-Studio-Build
-          path: build/
-          if-no-files-found: ignore
+          name: Future-Live-Studio-1.0.0
+          path: FutureLiveStudio/
+          if-no-files-found: error
