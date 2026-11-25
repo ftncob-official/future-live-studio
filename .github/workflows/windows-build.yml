@@ -1,0 +1,118 @@
+
+name: Future Live Studio - Windows Build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout OBS Studio
+        uses: actions/checkout@v4
+        with:
+          repository: obsproject/obs-studio
+          ref: master
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Locate Visual Studio
+        shell: powershell
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+
+          $vsPath = & $vswhere -latest -products * -property installationPath
+
+          if (-not $vsPath) {
+            throw "Visual Studio installation not found."
+          }
+
+          Write-Host "VS Installation: $vsPath"
+
+          "VS_PATH=$vsPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Install ATL Component
+        shell: powershell
+        run: |
+          $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
+
+          if (-not (Test-Path $installer)) {
+            $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
+          }
+
+          if (-not (Test-Path $installer)) {
+            throw "Visual Studio Installer executable not found."
+          }
+
+          Write-Host "Installing Visual C++ ATL component..."
+
+          & $installer modify `
+            --installPath "$env:VS_PATH" `
+            --add Microsoft.VisualStudio.Component.VC.ATL `
+            --quiet `
+            --norestart `
+            --wait
+
+          $exitCode = $LASTEXITCODE
+
+          Write-Host "Installer exit code: $exitCode"
+
+          if ($exitCode -ne 0) {
+            Write-Host "ATL installation command returned an error."
+            Write-Host "Continuing to ATL header verification."
+          }
+
+      - name: Verify ATL Headers
+        shell: powershell
+        run: |
+          $atlDir = Join-Path $env:VS_PATH "VC\Tools\MSVC"
+
+          $headers = @(
+            "atlbase.h",
+            "atlcomcli.h",
+            "atlstr.h"
+          )
+
+          foreach ($header in $headers) {
+            $result = Get-ChildItem `
+              -Path $atlDir `
+              -Filter $header `
+              -Recurse `
+              -File `
+              -ErrorAction SilentlyContinue |
+              Select-Object -First 1
+
+            if (-not $result) {
+              Write-Host "MISSING: $header"
+              throw "Required ATL header missing: $header"
+            }
+
+            Write-Host "FOUND: $header"
+            Write-Host $result.FullName
+          }
+
+          Write-Host "ATL verification completed successfully."
+
+      - name: Configure OBS
+        shell: powershell
+        run: |
+          cmake --preset windows-x64
+
+      - name: Build OBS
+        shell: powershell
+        run: |
+          cmake --build --preset windows-x64 --config Release --parallel 4
+
+      - name: Upload OBS Build
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Future-Live-Studio-Windows-Build
+          path: build_x64/rundir/Release/
+          if-no-files-found: error
+          retention-days: 7
