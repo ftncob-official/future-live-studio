@@ -29,57 +29,58 @@ jobs:
           $vsPath = & $vswhere -latest -products * -property installationPath
 
           if (-not $vsPath) {
-            throw "Visual Studio installation not found."
+            throw "Visual Studio not found"
           }
 
-          Write-Host "VS Installation: $vsPath"
+          "VS_PATH=$vsPath" | Out-File $env:GITHUB_ENV -Append
+          Write-Host "VS Path: $vsPath"
 
-          "VS_PATH=$vsPath" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Install ATL Component
+      - name: Install ATL
         shell: powershell
         run: |
-          $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
+          $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
 
           if (-not (Test-Path $installer)) {
-            $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
+            throw "VS Installer not found: $installer"
           }
 
-          if (-not (Test-Path $installer)) {
-            throw "Visual Studio Installer executable not found."
+          $arguments = @(
+            "modify"
+            "--installPath"
+            "`"$env:VS_PATH`""
+            "--add"
+            "Microsoft.VisualStudio.Component.VC.ATL"
+            "--quiet"
+            "--norestart"
+          )
+
+          Write-Host "Starting ATL installation..."
+
+          $process = Start-Process `
+            -FilePath $installer `
+            -ArgumentList $arguments `
+            -Wait `
+            -PassThru
+
+          Write-Host "Installer exit code: $($process.ExitCode)"
+
+          if ($process.ExitCode -ne 0) {
+            Write-Host "Installer returned non-zero exit code."
           }
 
-          Write-Host "Installing Visual C++ ATL component..."
-
-          & $installer modify `
-            --installPath "$env:VS_PATH" `
-            --add Microsoft.VisualStudio.Component.VC.ATL `
-            --quiet `
-            --norestart `
-            --wait
-
-          $exitCode = $LASTEXITCODE
-
-          Write-Host "Installer exit code: $exitCode"
-
-          if ($exitCode -ne 0) {
-            Write-Host "ATL installation command returned an error."
-            Write-Host "Continuing to ATL header verification."
-          }
-
-      - name: Verify ATL Headers
+      - name: Verify ATL
         shell: powershell
         run: |
           $atlDir = Join-Path $env:VS_PATH "VC\Tools\MSVC"
 
-          $headers = @(
+          $required = @(
             "atlbase.h",
             "atlcomcli.h",
             "atlstr.h"
           )
 
-          foreach ($header in $headers) {
-            $result = Get-ChildItem `
+          foreach ($header in $required) {
+            $file = Get-ChildItem `
               -Path $atlDir `
               -Filter $header `
               -Recurse `
@@ -87,28 +88,25 @@ jobs:
               -ErrorAction SilentlyContinue |
               Select-Object -First 1
 
-            if (-not $result) {
+            if ($file) {
+              Write-Host "FOUND: $($file.FullName)"
+            } else {
               Write-Host "MISSING: $header"
-              throw "Required ATL header missing: $header"
+              throw "ATL installation incomplete"
             }
-
-            Write-Host "FOUND: $header"
-            Write-Host $result.FullName
           }
 
-          Write-Host "ATL verification completed successfully."
+          Write-Host "ATL verified successfully!"
 
       - name: Configure OBS
         shell: powershell
-        run: |
-          cmake --preset windows-x64
+        run: cmake --preset windows-x64
 
       - name: Build OBS
         shell: powershell
-        run: |
-          cmake --build --preset windows-x64 --config Release --parallel 4
+        run: cmake --build --preset windows-x64 --config Release --parallel 4
 
-      - name: Upload OBS Build
+      - name: Upload Build
         if: success()
         uses: actions/upload-artifact@v4
         with:
