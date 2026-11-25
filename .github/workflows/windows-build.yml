@@ -1,4 +1,5 @@
-name: Windows x64 OBS baseline build
+
+name: Future Live Studio - Windows Build
 
 on:
   workflow_dispatch:
@@ -10,31 +11,26 @@ jobs:
   build:
     runs-on: windows-latest
     timeout-minutes: 360
-    steps:
-      - name: Checkout scaffold
-        uses: actions/checkout@v4
 
-      - name: Checkout upstream OBS Studio with submodules
+    steps:
+      - name: Checkout OBS Studio with full Git history
         uses: actions/checkout@v4
         with:
           repository: obsproject/obs-studio
           ref: master
-          path: obs-source
+          fetch-depth: 0
           submodules: recursive
 
       - name: Configure OBS
-        working-directory: obs-source
         run: cmake --preset windows-x64
 
       - name: Build OBS
-        working-directory: obs-source
-        run: cmake --build --preset windows-x64 --parallel 2
+        run: cmake --build --preset windows-x64 --config Release --parallel
 
-      - name: Upload build output as artifact
-        if: success()
+      - name: Upload build files
         uses: actions/upload-artifact@v4
         with:
-          name: OBS-Windows-x64-baseline
-          path: obs-source/build_x64/rundir/RelWithDebInfo/bin/64bit
-          if-no-files-found: error
+          name: Future-Live-Studio-Windows-Build
+          path: build_x64/rundir/Release/
+          if-no-files-found: warn
           retention-days: 7
