@@ -1,5 +1,5 @@
 
-name: Future Live Studio - Windows Build
+name: Future Live Studio Windows Build
 
 on:
   workflow_dispatch:
@@ -10,7 +10,6 @@ permissions:
 jobs:
   build:
     runs-on: windows-2025-vs2026
-    timeout-minutes: 360
 
     steps:
       - name: Checkout OBS Studio
@@ -18,64 +17,72 @@ jobs:
         with:
           repository: obsproject/obs-studio
           ref: master
-          fetch-depth: 0
           submodules: recursive
 
-      - name: Disable ATL-dependent features
-        shell: powershell
+      - name: Patch OBS for ATL-free build
+        shell: pwsh
         run: |
-          Write-Host "Disabling Virtual Camera and QSV11..."
+          $ErrorActionPreference = "Stop"
 
-          # Patch frontend-tools to remove Windows captions source files
-          $file = "plugins/frontend-tools/CMakeLists.txt"
+          # Disable win-dshow module registration
+          $pluginsFile = "plugins/CMakeLists.txt"
+          $pluginsText = Get-Content $pluginsFile -Raw
 
-          if (Test-Path $file) {
-            $content = Get-Content $file -Raw
+          $pluginsText = $pluginsText -replace '(?m)^\s*add_core_module\(win-dshow PLATFORMS WINDOWS\)\s*\r?\n', ''
 
-            $content = $content -replace `
-              '\$<\$<PLATFORM_ID:Windows>:captions-handler\.cpp>\s*', ''
+          Set-Content $pluginsFile $pluginsText -Encoding utf8
 
-            $content = $content -replace `
-              '\$<\$<PLATFORM_ID:Windows>:captions-handler\.hpp>\s*', ''
+          # Remove Windows captions source files
+          $frontendCMake = "plugins/frontend-tools/CMakeLists.txt"
+          $frontendText = Get-Content $frontendCMake -Raw
 
-            $content = $content -replace `
-              '\$<\$<PLATFORM_ID:Windows>:captions-mssapi-stream\.cpp>\s*', ''
+          $frontendText = $frontendText -replace '(?m)^\s*\$<\$<PLATFORM_ID:Windows>:captions[^>]*>\s*\r?\n', ''
 
-            $content = $content -replace `
-              '\$<\$<PLATFORM_ID:Windows>:captions-mssapi-stream\.hpp>\s*', ''
+          Set-Content $frontendCMake $frontendText -Encoding utf8
 
-            $content = $content -replace `
-              '\$<\$<PLATFORM_ID:Windows>:captions-mssapi\.cpp>\s*', ''
+          # Remove captions declarations and calls from frontend-tools.c
+          $frontendC = "plugins/frontend-tools/frontend-tools.c"
+          $frontendCText = Get-Content $frontendC -Raw
 
-            $content = $content -replace `
-              '\$<\$<PLATFORM_ID:Windows>:captions-mssapi\.hpp>\s*', ''
+          $frontendCText = $frontendCText -replace '(?s)#if defined\(_WIN32\)\s*void InitCaptions\(\);\s*void FreeCaptions\(\);\s*#endif\s*', ''
 
-            $content = $content -replace `
-              '\$<\$<PLATFORM_ID:Windows>:captions\.cpp>\s*', ''
+          $frontendCText = $frontendCText -replace '(?s)#if defined\(_WIN32\)\s*InitCaptions\(\);\s*#endif\s*', ''
 
-            $content = $content -replace `
-              '\$<\$<PLATFORM_ID:Windows>:captions\.hpp>\s*', ''
+          $frontendCText = $frontendCText -replace '(?s)#if defined\(_WIN32\)\s*FreeCaptions\(\);\s*#endif\s*', ''
 
-            Set-Content $file $content -Encoding UTF8
-            Write-Host "Captions sources patched."
-          }
+          Set-Content $frontendC $frontendCText -Encoding utf8
+
+          Write-Host "OBS source patches completed."
 
       - name: Configure OBS
-        shell: powershell
+        shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
+
           cmake --preset windows-x64 `
             -DENABLE_VIRTUALCAM=OFF `
             -DENABLE_QSV11=OFF
 
-      - name: Build OBS
-        shell: powershell
-        run: cmake --build --preset windows-x64 --config Release --parallel 4
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
 
-      - name: Upload Build
+      - name: Build OBS
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          cmake --build --preset windows-x64 --config Release --parallel 4
+
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+      - name: Upload Future Live Studio Build
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Future-Live-Studio-Windows-Build
+          name: Future-Live-Studio-Windows
           path: build_x64/rundir/Release/
           if-no-files-found: error
-          retention-days: 7
+          compression-level: 6
