@@ -25,60 +25,38 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
 
-          # Remove Windows DirectShow module registration
           $pluginsFile = "plugins/CMakeLists.txt"
           $pluginsText = Get-Content $pluginsFile -Raw
-
           $pluginsText = $pluginsText -replace '(?m)^\s*add_core_module\(win-dshow PLATFORMS WINDOWS\)\s*\r?\n', ''
-
           Set-Content $pluginsFile $pluginsText -Encoding utf8
 
-          # Remove Windows captions source entries
           $frontendCMake = "plugins/frontend-tools/CMakeLists.txt"
           $frontendText = Get-Content $frontendCMake -Raw
-
           $frontendText = $frontendText -replace '(?m)^\s*\$<\$<PLATFORM_ID:Windows>:captions[^>]*>\s*\r?\n', ''
-
           Set-Content $frontendCMake $frontendText -Encoding utf8
 
-          # Remove captions declarations and calls
           $frontendC = "plugins/frontend-tools/frontend-tools.c"
           $frontendCText = Get-Content $frontendC -Raw
-
           $frontendCText = $frontendCText -replace '(?s)#if defined\(_WIN32\)\s*void InitCaptions\(\);\s*void FreeCaptions\(\);\s*#endif\s*', ''
-
           $frontendCText = $frontendCText -replace '(?s)#if defined\(_WIN32\)\s*InitCaptions\(\);\s*#endif\s*', ''
-
           $frontendCText = $frontendCText -replace '(?s)#if defined\(_WIN32\)\s*FreeCaptions\(\);\s*#endif\s*', ''
-
           Set-Content $frontendC $frontendCText -Encoding utf8
 
-          Write-Host "Patch completed."
+          Write-Host "Source patch completed."
 
       - name: Configure OBS
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-
-          cmake --preset windows-x64 `
-            -DOBS_VERSION_OVERRIDE=32.0.0 `
-            -DENABLE_VIRTUALCAM=OFF `
-            -DENABLE_QSV11=OFF
-
-          if ($LASTEXITCODE -ne 0) {
-            exit $LASTEXITCODE
-          }
+          cmake --preset windows-x64 -DOBS_VERSION_OVERRIDE:STRING=32.0.0 -DENABLE_VIRTUALCAM=OFF -DENABLE_QSV11=OFF
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build OBS
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-
           cmake --build --preset windows-x64 --config Release --parallel 4
-
-          if ($LASTEXITCODE -ne 0) {
-            exit $LASTEXITCODE
-          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Upload Build
         if: success()
