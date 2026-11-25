@@ -1,0 +1,40 @@
+name: Windows x64 OBS baseline build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout scaffold
+        uses: actions/checkout@v4
+
+      - name: Checkout upstream OBS Studio with submodules
+        uses: actions/checkout@v4
+        with:
+          repository: obsproject/obs-studio
+          ref: master
+          path: obs-source
+          submodules: recursive
+
+      - name: Configure OBS
+        working-directory: obs-source
+        run: cmake --preset windows-x64
+
+      - name: Build OBS
+        working-directory: obs-source
+        run: cmake --build --preset windows-x64 --parallel 2
+
+      - name: Upload build output as artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OBS-Windows-x64-baseline
+          path: obs-source/build_x64/rundir/RelWithDebInfo/bin/64bit
+          if-no-files-found: error
+          retention-days: 7
