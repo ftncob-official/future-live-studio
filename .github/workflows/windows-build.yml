@@ -9,17 +9,47 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-2022
+    runs-on: windows-2025-vs2026
     timeout-minutes: 360
 
     steps:
-      - name: Checkout OBS Studio with full Git history
+      - name: Checkout OBS Studio
         uses: actions/checkout@v4
         with:
           repository: obsproject/obs-studio
           ref: master
           fetch-depth: 0
           submodules: recursive
+
+      - name: Verify ATL headers
+        shell: powershell
+        run: |
+          $vsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath
+
+          Write-Host "Visual Studio: $vsPath"
+
+          $atlPath = Join-Path $vsPath "VC\Tools\MSVC"
+
+          $headers = @("atlbase.h", "atlcomcli.h", "atlstr.h")
+          $missing = @()
+
+          foreach ($header in $headers) {
+            $found = Get-ChildItem -Path $atlPath -Filter $header -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+
+            if ($found) {
+              Write-Host "FOUND: $header -> $($found.FullName)"
+            }
+            else {
+              Write-Host "MISSING: $header"
+              $missing += $header
+            }
+          }
+
+          if ($missing.Count -gt 0) {
+            throw "Missing ATL headers: $($missing -join ', ')"
+          }
+
+          Write-Host "All required ATL headers are available."
 
       - name: Configure OBS
         run: cmake --preset windows-x64
