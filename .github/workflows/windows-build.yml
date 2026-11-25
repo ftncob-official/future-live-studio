@@ -21,86 +21,51 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
-      - name: Locate Visual Studio
+      - name: Disable ATL-dependent features
         shell: powershell
         run: |
-          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          Write-Host "Disabling Virtual Camera and QSV11..."
 
-          $vsPath = & $vswhere -latest -products * -property installationPath
+          # Patch frontend-tools to remove Windows captions source files
+          $file = "plugins/frontend-tools/CMakeLists.txt"
 
-          if (-not $vsPath) {
-            throw "Visual Studio not found"
+          if (Test-Path $file) {
+            $content = Get-Content $file -Raw
+
+            $content = $content -replace `
+              '\$<\$<PLATFORM_ID:Windows>:captions-handler\.cpp>\s*', ''
+
+            $content = $content -replace `
+              '\$<\$<PLATFORM_ID:Windows>:captions-handler\.hpp>\s*', ''
+
+            $content = $content -replace `
+              '\$<\$<PLATFORM_ID:Windows>:captions-mssapi-stream\.cpp>\s*', ''
+
+            $content = $content -replace `
+              '\$<\$<PLATFORM_ID:Windows>:captions-mssapi-stream\.hpp>\s*', ''
+
+            $content = $content -replace `
+              '\$<\$<PLATFORM_ID:Windows>:captions-mssapi\.cpp>\s*', ''
+
+            $content = $content -replace `
+              '\$<\$<PLATFORM_ID:Windows>:captions-mssapi\.hpp>\s*', ''
+
+            $content = $content -replace `
+              '\$<\$<PLATFORM_ID:Windows>:captions\.cpp>\s*', ''
+
+            $content = $content -replace `
+              '\$<\$<PLATFORM_ID:Windows>:captions\.hpp>\s*', ''
+
+            Set-Content $file $content -Encoding UTF8
+            Write-Host "Captions sources patched."
           }
-
-          "VS_PATH=$vsPath" | Out-File $env:GITHUB_ENV -Append
-          Write-Host "VS Path: $vsPath"
-
-      - name: Install ATL
-        shell: powershell
-        run: |
-          $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
-
-          if (-not (Test-Path $installer)) {
-            throw "VS Installer not found: $installer"
-          }
-
-          $arguments = @(
-            "modify"
-            "--installPath"
-            "`"$env:VS_PATH`""
-            "--add"
-            "Microsoft.VisualStudio.Component.VC.ATL"
-            "--quiet"
-            "--norestart"
-          )
-
-          Write-Host "Starting ATL installation..."
-
-          $process = Start-Process `
-            -FilePath $installer `
-            -ArgumentList $arguments `
-            -Wait `
-            -PassThru
-
-          Write-Host "Installer exit code: $($process.ExitCode)"
-
-          if ($process.ExitCode -ne 0) {
-            Write-Host "Installer returned non-zero exit code."
-          }
-
-      - name: Verify ATL
-        shell: powershell
-        run: |
-          $atlDir = Join-Path $env:VS_PATH "VC\Tools\MSVC"
-
-          $required = @(
-            "atlbase.h",
-            "atlcomcli.h",
-            "atlstr.h"
-          )
-
-          foreach ($header in $required) {
-            $file = Get-ChildItem `
-              -Path $atlDir `
-              -Filter $header `
-              -Recurse `
-              -File `
-              -ErrorAction SilentlyContinue |
-              Select-Object -First 1
-
-            if ($file) {
-              Write-Host "FOUND: $($file.FullName)"
-            } else {
-              Write-Host "MISSING: $header"
-              throw "ATL installation incomplete"
-            }
-          }
-
-          Write-Host "ATL verified successfully!"
 
       - name: Configure OBS
         shell: powershell
-        run: cmake --preset windows-x64
+        run: |
+          cmake --preset windows-x64 `
+            -DENABLE_VIRTUALCAM=OFF `
+            -DENABLE_QSV11=OFF
 
       - name: Build OBS
         shell: powershell
